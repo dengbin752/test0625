@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Python virtual environment
+.venv/
+venv/
+ENV/
+
+# Environment files (contain API keys)
+.env
+.env.local
+.env.*.local
+
+# Node.js (frontend)
+node_modules/
+.pnpm-store/
+
+# Build outputs
+*.tgz
+
+# Vite build
+frontend/dist/
+dist/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
