@@ -14,6 +14,9 @@ class SKUItem(BaseModel):
     length: Optional[float] = None
     height: Optional[float] = None
     volume: Optional[float] = None
+    # Tracking info per SKU
+    tracking_number: Optional[str] = None
+    logistics_company: Optional[str] = None
 
 
 class LineItem(BaseModel):
@@ -23,6 +26,12 @@ class LineItem(BaseModel):
     price_per_unit: float
     line_total: float
     image: Optional[str] = None
+    # Tracking info per SKU
+    assigned_tracking: Optional[str] = None
+    tracking_no: Optional[str] = None
+    logistics_company: Optional[str] = None
+    tracking_status: Optional[str] = None
+    tracking_last_update: Optional[str] = None
 
 
 class Summary(BaseModel):
@@ -37,6 +46,7 @@ class TrackingInfo(BaseModel):
     logistics_company: str
     status: Optional[str] = None
     last_update: Optional[str] = None
+    sku: Optional[str] = None
 
 
 class OrderData(BaseModel):

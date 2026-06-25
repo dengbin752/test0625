@@ -13,6 +13,7 @@ from .shipping import (
     calculate_shipment_fee,
     get_tracking_info,
     get_logistics_company,
+    generate_tracking_number,
 )
 
 load_dotenv()
@@ -95,6 +96,22 @@ async def calculate_order(order_data: OrderData) -> OrderResponse:
         line_total = item.price * item.quantity
         subtotal += line_total
         
+        # Generate or use provided tracking number
+        tracking_no = item.tracking_number
+        logistics = item.logistics_company
+        
+        if tracking_no:
+            # Use user-provided tracking number
+            logistics = logistics or get_logistics_company(tracking_no)
+        else:
+            # Auto-generate a random tracking number
+            tracking_no, logistics = generate_tracking_number()
+        
+        # Fetch tracking info
+        tracking_data = await get_tracking_info(tracking_no, logistics)
+        tracking_status = tracking_data.get("status")
+        tracking_last_update = tracking_data.get("last_update")
+        
         line_item = LineItem(
             sku_code=item.sku,
             name=item.name,
@@ -102,6 +119,11 @@ async def calculate_order(order_data: OrderData) -> OrderResponse:
             price_per_unit=item.price,
             line_total=round(line_total, 2),
             image=item.image,
+            assigned_tracking=logistics,
+            tracking_no=tracking_no,
+            logistics_company=logistics,
+            tracking_status=tracking_status,
+            tracking_last_update=tracking_last_update,
         )
         line_items.append(line_item)
     
@@ -134,7 +156,7 @@ async def calculate_order(order_data: OrderData) -> OrderResponse:
         total=total,
     )
     
-    # Get tracking info if provided
+    # Get tracking info (legacy - from separate list, also linked by SKU)
     tracking_info = []
     for tracking in order_data.tracking_numbers:
         logistics = tracking.logistics_company or get_logistics_company(tracking.tracking_number)
@@ -145,6 +167,7 @@ async def calculate_order(order_data: OrderData) -> OrderResponse:
             logistics_company=logistics,
             status=tracking_data.get("status"),
             last_update=tracking_data.get("last_update"),
+            sku=tracking.sku,
         ))
     
     return OrderResponse(

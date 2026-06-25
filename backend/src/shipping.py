@@ -1,5 +1,3 @@
-import httpx
-import os
 import logging
 from dotenv import load_dotenv
 
@@ -9,23 +7,7 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-AUSPOST_API_KEY = os.getenv("AUSPOST_API_KEY")
-AUSPOST_API_PASSWORD = os.getenv("AUSPOST_API_PASSWORD")
-AUSPOST_API_URL = os.getenv("AUSPOST_API_URL")
-
-STARTRACK_API_KEY = os.getenv("STARTRACK_API_KEY")
-STARTRACK_API_PASSWORD = os.getenv("STARTRACK_API_PASSWORD")
-STARTRACK_API_URL = os.getenv("STARTRACK_API_URL")
-
-ORIGIN_POSTCODE = os.getenv("ORIGIN_POSTCODE", "2111")
-
-
-def get_auth_header(api_key: str, api_password: str) -> dict:
-    """Generate Basic Auth header for API requests"""
-    import base64
-    credentials = f"{api_key}:{api_password}"
-    encoded = base64.b64encode(credentials.encode()).decode()
-    return {"Authorization": f"Basic {encoded}"}
+ORIGIN_POSTCODE = "2111"
 
 
 def get_logistics_company(tracking_number: str) -> str:
@@ -39,6 +21,37 @@ def get_logistics_company(tracking_number: str) -> str:
     # Default to Australia Post
     else:
         return "AustraliaPost"
+
+
+def generate_tracking_number(logistics: str = None) -> tuple[str, str]:
+    """Generate a random tracking number and determine logistics company
+    
+    Returns:
+        tuple of (tracking_number, logistics_company)
+    """
+    import random
+    import uuid
+    
+    if logistics is None:
+        logistics = random.choice(["StarTrack", "TNT", "AustraliaPost"])
+    
+    if logistics == "StarTrack":
+        # StarTrack format: ST + 8 digits, or 7T + 8 digits
+        prefix = random.choice(["ST", "7T"])
+        num = ''.join(random.choices("0123456789", k=8))
+        tracking = f"{prefix}{num}"
+    elif logistics == "TNT":
+        # TNT format: TNT + 9 digits
+        num = ''.join(random.choices("0123456789", k=9))
+        tracking = f"TNT{num}"
+    else:
+        # Australia Post: 12-14 alphanumeric (e.g., AE123456789AU)
+        prefix = ''.join(random.choices("ABCDEFGHIJKLMNOPQRSTUVWXYZ", k=2))
+        num = ''.join(random.choices("0123456789", k=9))
+        suffix = ''.join(random.choices("ABCDEFGHIJKLMNOPQRSTUVWXYZ", k=2))
+        tracking = f"{prefix}{num}{suffix}"
+    
+    return tracking, logistics
 
 
 async def get_auspost_shipping_fee(
@@ -81,75 +94,53 @@ async def get_auspost_shipping_fee(
     return round(estimated_fee, 2)
 
 
-async def get_startrack_tracking(tracking_number: str) -> dict:
-    """Get tracking info from StarTrack API"""
-    logger.info(f"Fetching StarTrack tracking for: {tracking_number}")
-    headers = get_auth_header(STARTRACK_API_KEY, STARTRACK_API_PASSWORD)
-    headers["Content-Type"] = "application/json"
+def _mock_tracking_data(tracking_number: str, logistics_company: str) -> dict:
+    """Generate mock tracking data for demonstration"""
+    import random
+    from datetime import datetime, timedelta
     
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.get(
-                f"{STARTRACK_API_URL}/v1/tracking/{tracking_number}",
-                headers=headers,
-                timeout=10.0,
-            )
-            logger.info(f"StarTrack API response status: {response.status_code}")
-            if response.status_code == 200:
-                data = response.json()
-                return {
-                    "status": data.get("status", "Unknown"),
-                    "last_update": data.get("lastUpdated", None),
-                }
-        except Exception as e:
-            logger.error(f"StarTrack API error: {e}")
-            return {"status": f"Error: {str(e)}", "last_update": None}
+    statuses = [
+        "In Transit",
+        "Processed at Facility",
+        "Out for Delivery",
+        "On Board for Delivery",
+        "Collected",
+    ]
     
-    return {"status": "Not Found", "last_update": None}
-
-
-async def get_auspost_tracking(tracking_number: str) -> dict:
-    """Get tracking info from Australia Post API"""
-    logger.info(f"Fetching Australia Post tracking for: {tracking_number}")
-    headers = get_auth_header(AUSPOST_API_KEY, AUSPOST_API_PASSWORD)
-    headers["Content-Type"] = "application/json"
+    status = random.choice(statuses)
     
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.get(
-                f"{AUSPOST_API_URL}/shipping/v1/track",
-                params={"trackingId": tracking_number},
-                headers=headers,
-                timeout=10.0,
-            )
-            logger.info(f"Australia Post API response status: {response.status_code}")
-            if response.status_code == 200:
-                data = response.json()
-                return {
-                    "status": data.get("status", "Unknown"),
-                    "last_update": data.get("lastUpdated", None),
-                }
-        except Exception as e:
-            logger.error(f"Australia Post API error: {e}")
-            return {"status": f"Error: {str(e)}", "last_update": None}
+    # Random last update within the last 5 days
+    hours_ago = random.randint(1, 120)
+    last_update = (datetime.now() - timedelta(hours=hours_ago)).strftime("%Y-%m-%d %H:%M:%S")
     
-    return {"status": "Not Found", "last_update": None}
+    return {
+        "status": status,
+        "last_update": last_update,
+    }
 
 
 async def get_tracking_info(tracking_number: str, logistics_company: str = None) -> dict:
-    """Get tracking info based on logistics company"""
+    """Get mock tracking info based on logistics company"""
     if logistics_company is None:
         logistics_company = get_logistics_company(tracking_number)
     
-    logger.info(f"Getting tracking info for {tracking_number} via {logistics_company}")
+    logger.info(f"Getting mock tracking info for {tracking_number} via {logistics_company}")
     
-    if logistics_company == "StarTrack":
-        return await get_startrack_tracking(tracking_number)
-    elif logistics_company == "TNT":
-        # TNT uses similar API to StarTrack
-        return await get_startrack_tracking(tracking_number)
-    else:
-        return await get_auspost_tracking(tracking_number)
+    return _mock_tracking_data(tracking_number, logistics_company)
+
+
+def _to_float(val) -> float:
+    """Convert a value to float, handling both string suffixes and raw numbers"""
+    if val is None:
+        return 0.0
+    if isinstance(val, (int, float)):
+        return float(val)
+    # String with possible unit suffix like "0.2g", "10.0mm"
+    num_str = str(val).replace("g", "").replace("mm", "").replace("mm³", "").strip()
+    try:
+        return float(num_str)
+    except (ValueError, TypeError):
+        return 0.0
 
 
 async def calculate_shipment_fee(
@@ -161,10 +152,10 @@ async def calculate_shipment_fee(
     total_fee = 0.0
     
     for item in items:
-        weight = float(item.get("weight", "0.2g").replace("g", "")) if item.get("weight") else 0.2
-        length = float(item.get("length", "10.0mm").replace("mm", "")) if item.get("length") else 10.0
-        width = float(item.get("width", "10.0mm").replace("mm", "")) if item.get("width") else 10.0
-        height = float(item.get("height", "10.0mm").replace("mm", "")) if item.get("height") else 10.0
+        weight = _to_float(item.get("weight"))
+        length = _to_float(item.get("length"))
+        width = _to_float(item.get("width"))
+        height = _to_float(item.get("height"))
         
         fee = await get_auspost_shipping_fee(
             destination_postcode=destination_postcode,

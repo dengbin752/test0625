@@ -23,6 +23,8 @@ interface Product {
 interface CartItem {
   product: Product
   quantity: number
+  tracking_number?: string
+  logistics_company?: string
 }
 
 interface LineItem {
@@ -32,6 +34,11 @@ interface LineItem {
   price_per_unit: number
   line_total: number
   image: string | null
+  assigned_tracking?: string | null
+  tracking_no?: string | null
+  logistics_company?: string | null
+  tracking_status?: string | null
+  tracking_last_update?: string | null
 }
 
 interface Summary {
@@ -84,7 +91,6 @@ function App() {
     state: '',
     postcode: '',
   })
-  const [trackingNumbers, setTrackingNumbers] = useState('')
   const [orderResult, setOrderResult] = useState<OrderResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -135,6 +141,12 @@ function App() {
     setCart(prev => prev.filter(item => item.product.SKU !== sku))
   }
 
+  const updateTracking = (sku: string, tracking_number: string) => {
+    setCart(prev => prev.map(item =>
+      item.product.SKU === sku ? { ...item, tracking_number } : item
+    ))
+  }
+
   const submitOrder = async () => {
     if (cart.length === 0) {
       setError('Please add at least one product to cart')
@@ -164,13 +176,9 @@ function App() {
       width: parseDim(item.product.width),
       height: parseDim(item.product.height),
       volume: parseDim(item.product.volume),
+      tracking_number: item.tracking_number || undefined,
+      logistics_company: item.logistics_company || undefined,
     }))
-
-    const trackingList = trackingNumbers
-      .split('\n')
-      .map((t: string) => t.trim())
-      .filter((t: string) => t.length > 0)
-      .map((tracking_number: string) => ({ tracking_number, logistics_company: '' }))
 
     try {
       const response = await fetch(`${config.apiBaseUrl}/calculate`, {
@@ -179,7 +187,6 @@ function App() {
         body: JSON.stringify({
           items,
           destination_postcode: customerInfo.postcode,
-          tracking_numbers: trackingList,
         }),
       })
 
@@ -219,7 +226,7 @@ function App() {
     return colors[species] || 'bg-gray-100 text-gray-800'
   }
 
-  // ==================== Order Summary Page (after submission) ====================
+  // ==================== Order Summary Page ====================
   if (page === 'order' && orderResult) {
     return (
       <div className="min-h-screen bg-gray-50">
@@ -243,7 +250,7 @@ function App() {
           <div className="grid lg:grid-cols-3 gap-6">
             {/* Left Column */}
             <div className="lg:col-span-1 space-y-6">
-              {/* Order Items Summary */}
+              {/* Order Items with Tracking */}
               <section className="bg-white rounded-lg shadow-md p-4">
                 <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
                   <ShoppingCart size={20} className="text-blue-600" />
@@ -251,17 +258,46 @@ function App() {
                 </h2>
                 <div className="space-y-3">
                   {orderResult.line_items.map(item => (
-                    <div key={item.sku_code} className="flex items-center gap-3 pb-3 border-b last:border-b-0">
-                      <div className="w-10 h-10 bg-gray-100 border border-dashed rounded-lg flex items-center justify-center flex-shrink-0">
-                        <Package size={18} className="text-gray-400" />
+                    <div key={item.sku_code} className="pb-3 border-b last:border-b-0">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-gray-100 border border-dashed rounded-lg flex items-center justify-center flex-shrink-0">
+                          <Package size={18} className="text-gray-400" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-900 truncate">{item.name}</p>
+                          <p className="text-xs text-gray-500">SKU: {item.sku_code}</p>
+                          <p className="text-xs text-gray-600">{item.quantity} x {formatPrice(item.price_per_unit)}</p>
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <p className="text-sm font-semibold text-blue-600">{formatPrice(item.line_total)}</p>
+                        </div>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900 truncate">{item.name}</p>
-                        <p className="text-xs text-gray-500">SKU: {item.sku_code}</p>
-                        <p className="text-xs text-gray-600">{item.quantity} x {formatPrice(item.price_per_unit)}</p>
-                      </div>
-                      <div className="text-right flex-shrink-0">
-                        <p className="text-sm font-semibold text-blue-600">{formatPrice(item.line_total)}</p>
+                      {/* Tracking per SKU */}
+                      <div className="mt-2 border-t pt-2 text-xs space-y-1">
+                        <div className="flex items-center gap-1 text-gray-600">
+                          <Truck size={12} />
+                          <span className="font-medium">Tracking:</span>
+                          <span>{item.tracking_no || 'Not assigned'}</span>
+                        </div>
+                        {item.tracking_no && (
+                          <>
+                            <div className="text-gray-500">
+                              <span className="font-medium text-gray-600">Assigned:</span> {item.assigned_tracking || '-'}
+                            </div>
+                            <div className="text-gray-500">
+                              <span className="font-medium text-gray-600">Logistics:</span> {item.logistics_company || '-'}
+                            </div>
+                            {item.tracking_status && (
+                              <span className={`inline-block px-2 py-0.5 rounded text-xs ${
+                                item.tracking_status === 'Delivered' ? 'bg-green-100 text-green-800' :
+                                item.tracking_status.startsWith('Error') ? 'bg-red-100 text-red-800' :
+                                'bg-blue-100 text-blue-800'
+                              }`}>
+                                {item.tracking_status}
+                              </span>
+                            )}
+                          </>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -356,41 +392,7 @@ function App() {
                 </div>
               </div>
 
-              {/* Tracking Info */}
-              {orderResult.tracking_info.length > 0 && (
-                <div className="bg-white rounded-lg shadow-md p-6">
-                  <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-                    <Clock className="text-blue-600" size={24} />
-                    Tracking Information
-                  </h2>
-                  <div className="space-y-4">
-                    {orderResult.tracking_info.map((tracking, index) => (
-                      <div key={index} className="border rounded-lg p-4">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <p className="font-medium">{tracking.tracking_number}</p>
-                            <p className="text-sm text-gray-500">{tracking.logistics_company}</p>
-                          </div>
-                          {tracking.status && (
-                            <span className={`px-2 py-1 rounded text-sm ${
-                              tracking.status === 'Delivered' ? 'bg-green-100 text-green-800' :
-                              tracking.status.startsWith('Error') ? 'bg-red-100 text-red-800' :
-                              'bg-blue-100 text-blue-800'
-                            }`}>
-                              {tracking.status}
-                            </span>
-                          )}
-                        </div>
-                        {tracking.last_update && (
-                          <p className="text-sm text-gray-500 mt-2">Last Update: {tracking.last_update}</p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* All Items Detail */}
+              {/* All Items w/ Tracking Detail */}
               <div className="bg-white rounded-lg shadow-md p-6">
                 <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
                   <Package className="text-blue-600" size={24} />
@@ -402,8 +404,9 @@ function App() {
                       <th className="pb-2">Product</th>
                       <th className="pb-2">SKU</th>
                       <th className="pb-2 text-center">Qty</th>
-                      <th className="pb-2 text-right">Unit Price</th>
+                      <th className="pb-2 text-right">Price</th>
                       <th className="pb-2 text-right">Total</th>
+                      <th className="pb-2">Tracking</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -419,6 +422,25 @@ function App() {
                         <td className="py-3 text-center">{item.quantity}</td>
                         <td className="py-3 text-right">{formatPrice(item.price_per_unit)}</td>
                         <td className="py-3 text-right font-medium">{formatPrice(item.line_total)}</td>
+                        <td className="py-3">
+                          {item.tracking_no ? (
+                            <div className="text-xs space-y-0.5">
+                              <p><span className="text-gray-500">#</span> {item.tracking_no}</p>
+                              <p className="text-gray-500">{item.logistics_company}</p>
+                              {item.tracking_status && (
+                                <span className={`inline-block px-1.5 py-0.5 rounded text-xs ${
+                                  item.tracking_status === 'Delivered' ? 'bg-green-100 text-green-800' :
+                                  item.tracking_status.startsWith('Error') ? 'bg-red-100 text-red-800' :
+                                  'bg-blue-100 text-blue-800'
+                                }`}>
+                                  {item.tracking_status}
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-gray-400">-</span>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -431,10 +453,9 @@ function App() {
     )
   }
 
-  // ==================== Ordering Page (default) ====================
+  // ==================== Ordering Page ====================
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
       <header className="bg-blue-600 text-white py-3 shadow-lg sticky top-0 z-50">
         <div className="container mx-auto px-4">
           <div className="flex items-center justify-between">
@@ -467,19 +488,15 @@ function App() {
               <div className="grid md:grid-cols-2 gap-4">
                 {products.map(product => (
                   <div key={product.SKU} className="bg-white rounded-lg shadow-sm border hover:shadow-md transition-shadow">
-                    {/* Product Image Placeholder */}
                     <div className="bg-gradient-to-br from-blue-50 to-blue-100 h-36 flex items-center justify-center rounded-t-lg border-b">
                       <div className="w-20 h-20 bg-white border-2 border-dashed border-blue-300 rounded-xl flex items-center justify-center">
                         <Package size={36} className="text-blue-400" />
                       </div>
                     </div>
-
-                    {/* Product Info */}
                     <div className="p-4">
                       <h3 className="font-semibold text-gray-900 text-sm leading-tight line-clamp-2 mb-2">
                         {product.ProductName}
                       </h3>
-
                       <div className="flex flex-wrap gap-1 mb-2">
                         {product.PlantSpecies && (
                           <span className={`text-xs px-2 py-0.5 rounded-full ${getCategoryColor(product.PlantSpecies)}`}>
@@ -492,18 +509,15 @@ function App() {
                           </span>
                         )}
                       </div>
-
                       {product.Description && (
                         <p className="text-xs text-gray-500 mb-2 line-clamp-2">
                           {product.Description.replace(/\n/g, ' ')}
                         </p>
                       )}
-
                       <div className="text-xs text-gray-400 mb-3 space-y-0.5">
                         <span>SKU: {product.SKU}</span>
                         {product.weight && <span> | Weight: {product.weight}</span>}
                       </div>
-
                       <div className="flex items-center justify-between">
                         <span className="text-lg font-bold text-blue-600">
                           {formatPrice(parseFloat(product.RRP))}
@@ -525,7 +539,7 @@ function App() {
 
           {/* Right Side - Cart & Shipping */}
           <div className="lg:col-span-1 space-y-6">
-            {/* Shopping Cart */}
+            {/* Shopping Cart w/ Per-Item Tracking */}
             <section className="bg-white rounded-lg shadow-md">
               <div className="p-4 border-b">
                 <h2 className="text-lg font-semibold flex items-center gap-2">
@@ -543,28 +557,40 @@ function App() {
                 {cart.length === 0 ? (
                   <p className="text-gray-400 text-sm text-center py-6">Cart is empty</p>
                 ) : (
-                  <div className="space-y-3 max-h-72 overflow-y-auto">
+                  <div className="space-y-3 max-h-96 overflow-y-auto">
                     {cart.map(item => (
-                      <div key={item.product.SKU} className="flex items-center gap-3 pb-3 border-b last:border-b-0">
-                        <div className="w-10 h-10 bg-blue-50 border border-dashed border-blue-200 rounded-lg flex items-center justify-center flex-shrink-0">
-                          <Package size={18} className="text-blue-400" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{item.product.ProductName}</p>
-                          <p className="text-xs text-gray-500">{formatPrice(parseFloat(item.product.RRP))} ea</p>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <button onClick={() => updateQuantity(item.product.SKU, -1)} className="w-6 h-6 rounded bg-gray-100 hover:bg-gray-200 flex items-center justify-center">
-                            <Minus size={12} />
+                      <div key={item.product.SKU} className="pb-3 border-b last:border-b-0">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 bg-blue-50 border border-dashed border-blue-200 rounded-lg flex items-center justify-center flex-shrink-0">
+                            <Package size={18} className="text-blue-400" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">{item.product.ProductName}</p>
+                            <p className="text-xs text-gray-500">{formatPrice(parseFloat(item.product.RRP))} ea</p>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <button onClick={() => updateQuantity(item.product.SKU, -1)} className="w-6 h-6 rounded bg-gray-100 hover:bg-gray-200 flex items-center justify-center">
+                              <Minus size={12} />
+                            </button>
+                            <span className="w-6 text-center text-sm font-medium">{item.quantity}</span>
+                            <button onClick={() => updateQuantity(item.product.SKU, 1)} className="w-6 h-6 rounded bg-gray-100 hover:bg-gray-200 flex items-center justify-center">
+                              <Plus size={12} />
+                            </button>
+                          </div>
+                          <button onClick={() => removeFromCart(item.product.SKU)} className="text-red-400 hover:text-red-600">
+                            <Trash2 size={16} />
                           </button>
-                          <span className="w-6 text-center text-sm font-medium">{item.quantity}</span>
-                          <button onClick={() => updateQuantity(item.product.SKU, 1)} className="w-6 h-6 rounded bg-gray-100 hover:bg-gray-200 flex items-center justify-center">
-                            <Plus size={12} />
-                          </button>
                         </div>
-                        <button onClick={() => removeFromCart(item.product.SKU)} className="text-red-400 hover:text-red-600">
-                          <Trash2 size={16} />
-                        </button>
+                        {/* Tracking number input per item */}
+                        <div className="mt-2 ml-13 pl-11">
+                          <input
+                            type="text"
+                            value={item.tracking_number || ''}
+                            onChange={e => updateTracking(item.product.SKU, e.target.value)}
+                            placeholder="Tracking number (optional)"
+                            className="w-full px-2 py-1 text-xs border rounded focus:ring-1 focus:ring-blue-500"
+                          />
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -635,12 +661,6 @@ function App() {
                     <input type="text" value={customerInfo.postcode} onChange={e => setCustomerInfo({...customerInfo, postcode: e.target.value})}
                       placeholder="Required" className="w-full px-3 py-1.5 text-sm border rounded focus:ring-1 focus:ring-blue-500" />
                   </div>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Tracking Numbers (optional)</label>
-                  <textarea value={trackingNumbers} onChange={e => setTrackingNumbers(e.target.value)}
-                    placeholder="One per line..." rows={2}
-                    className="w-full px-3 py-1.5 text-sm border rounded focus:ring-1 focus:ring-blue-500" />
                 </div>
               </div>
 
